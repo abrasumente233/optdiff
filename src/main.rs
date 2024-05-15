@@ -13,17 +13,12 @@ use ratatui::{prelude::*, widgets::*};
 use style::palette::tailwind;
 use unicode_width::UnicodeWidthStr;
 
-#[derive(Debug, Clone)]
-struct ResultLine {
-    text: String,
-}
-
 #[derive(Debug)]
 struct Pass {
     name: String,
     machine: bool,
-    after: Vec<ResultLine>,
-    before: Vec<ResultLine>,
+    after: String,
+    before: String,
     ir_changed: bool,
 }
 
@@ -45,14 +40,14 @@ struct PassDump {
     header: String,
     affected_function: Option<String>,
     machine: bool,
-    lines: Vec<ResultLine>,
+    lines: String,
 }
 
 #[derive(Debug)]
 struct SplitPassDump {
     header: String,
     machine: bool,
-    functions: HashMap<String, Vec<ResultLine>>,
+    functions: HashMap<String, Vec<String>>,
 }
 
 struct LlvmPassDumpParser {
@@ -107,17 +102,17 @@ impl LlvmPassDumpParser {
         }
     }
 
-    fn breakdown_output_into_pass_dumps(&self, ir: Vec<ResultLine>) -> Vec<PassDump> {
+    fn breakdown_output_into_pass_dumps(&self, ir: String) -> Vec<PassDump> {
         let mut raw_passes = Vec::new();
         let mut pass: Option<PassDump> = None;
         let mut last_was_blank = false;
 
-        for line in ir {
-            if self.machine_code_dump_header.is_match(&line.text) {
+        for line in ir.lines() {
+            if self.machine_code_dump_header.is_match(line) {
                 break;
             }
-            let ir_match = self.ir_dump_header.captures(&line.text);
-            let machine_match = self.machine_code_dump_header.captures(&line.text);
+            let ir_match = self.ir_dump_header.captures(line);
+            let machine_match = self.machine_code_dump_header.captures(line);
             let machine_match_is_some = machine_match.is_some();
             let header = ir_match.or(machine_match);
 
@@ -129,17 +124,19 @@ impl LlvmPassDumpParser {
                     header: header.get(1).unwrap().as_str().to_string(),
                     affected_function: header.get(2).map(|m| m.as_str().to_string()),
                     machine: machine_match_is_some,
-                    lines: Vec::new(),
+                    lines: String::new(),
                 });
                 last_was_blank = true;
             } else if let Some(ref mut current_pass) = pass {
-                if line.text.trim().is_empty() {
+                if line.trim().is_empty() {
                     if !last_was_blank {
-                        current_pass.lines.push(line);
+                        current_pass.lines += line;
+                        current_pass.lines += "\n";
                     }
                     last_was_blank = true;
                 } else {
-                    current_pass.lines.push(line);
+                    current_pass.lines += line;
+                    current_pass.lines += "\n";
                     last_was_blank = false;
                 }
             }
@@ -156,12 +153,13 @@ impl LlvmPassDumpParser {
             machine: dump.machine,
             functions: HashMap::new(),
         };
-        let mut func: Option<(String, Vec<ResultLine>)> = None;
+        let mut func: Option<(String, Vec<String>)> = None;
         let mut is_machine_function_open = false;
 
-        for line in dump.lines {
-            let ir_fn_match = self.function_define.captures(&line.text);
-            let machine_fn_match = self.machine_function_begin.captures(&line.text);
+        for line in dump.lines.lines() {
+            let line = line.to_string();
+            let ir_fn_match = self.function_define.captures(&line);
+            let machine_fn_match = self.machine_function_begin.captures(&line);
 
             if let Some(ir_fn_match) = ir_fn_match {
                 if func.is_some() {
@@ -177,14 +175,13 @@ impl LlvmPassDumpParser {
                 }
                 func = Some((machine_fn_match[1].to_string(), vec![line]));
                 is_machine_function_open = true;
-            } else if line.text.starts_with("; Preheader:") {
+            } else if line.starts_with("; Preheader:") {
                 if func.is_none() {
                     func = Some(("<loop>".to_string(), vec![line]));
                 }
             } else if let Some((ref mut name, ref mut lines)) = func {
-                if (!is_machine_function_open && self.function_end.is_match(line.text.trim()))
-                    || (is_machine_function_open
-                        && self.machine_function_end.is_match(line.text.trim()))
+                if (!is_machine_function_open && self.function_end.is_match(line.trim()))
+                    || (is_machine_function_open && self.machine_function_end.is_match(line.trim()))
                 {
                     lines.push(line);
                     pass.functions.insert(name.clone(), lines.clone());
@@ -226,7 +223,7 @@ impl LlvmPassDumpParser {
                         header: pass.header.clone(),
                         affected_function: None,
                         machine: pass.machine,
-                        lines,
+                        lines: lines.join("\n"),
                     });
                 if function_name != "<loop>" {
                     previous_function = Some(name);
@@ -299,8 +296,8 @@ impl LlvmPassDumpParser {
                 let mut pass = Pass {
                     name: "".to_string(),
                     machine: false,
-                    after: Vec::new(),
-                    before: Vec::new(),
+                    after: String::new(),
+                    before: String::new(),
                     ir_changed: true,
                 };
                 let current_dump = &pass_dumps[i];
@@ -344,18 +341,7 @@ impl LlvmPassDumpParser {
                     }
                 }
 
-                pass.ir_changed = pass
-                    .before
-                    .iter()
-                    .map(|x| x.text.as_str())
-                    .collect::<Vec<_>>()
-                    .join("\n")
-                    != pass
-                        .after
-                        .iter()
-                        .map(|x| x.text.as_str())
-                        .collect::<Vec<_>>()
-                        .join("\n");
+                pass.ir_changed = pass.before != pass.after;
                 passes.push(pass);
             }
 
@@ -366,7 +352,7 @@ impl LlvmPassDumpParser {
 
     fn breakdown_output(
         &self,
-        ir: Vec<ResultLine>,
+        ir: String,
         opt_pipeline_options: &OptPipelineBackendOptions,
     ) -> OptPipelineResults {
         let raw_passes = self.breakdown_output_into_pass_dumps(ir);
@@ -386,9 +372,9 @@ impl LlvmPassDumpParser {
 
     fn apply_ir_filters(
         &self,
-        ir: Vec<ResultLine>,
+        ir: &str,
         opt_pipeline_options: &OptPipelineBackendOptions,
-    ) -> Vec<ResultLine> {
+    ) -> String {
         let mut filters = self.filters.clone();
         let mut line_filters = self.line_filters.clone();
 
@@ -400,30 +386,30 @@ impl LlvmPassDumpParser {
             line_filters.extend(self.metadata_line_filters.clone());
         }
 
-        ir.into_iter()
-            .filter(|line| filters.iter().all(|re| !re.is_match(&line.text)))
-            .map(|mut line| {
+        ir.lines()
+            .filter(|line| filters.iter().all(|re| !re.is_match(line)))
+            .map(|line| {
+                let mut l = line.to_string();
                 for re in &line_filters {
-                    line.text = re.replace_all(&line.text, "").to_string();
+                    l = re.replace_all(&l, "").to_string();
                 }
                 line
             })
-            .collect()
+            .join("\n")
     }
 
     fn process(
         &self,
-        output: Vec<ResultLine>,
+        output: &str,
         opt_pipeline_options: &OptPipelineBackendOptions,
     ) -> OptPipelineResults {
         let ir = output
-            .into_iter()
+            .lines()
             .skip_while(|line| {
-                !self.ir_dump_header.is_match(&line.text)
-                    && !self.machine_code_dump_header.is_match(&line.text)
+                !self.ir_dump_header.is_match(line) && !self.machine_code_dump_header.is_match(line)
             })
-            .collect::<Vec<_>>();
-        let preprocessed_lines = self.apply_ir_filters(ir, opt_pipeline_options);
+            .join("\n");
+        let preprocessed_lines = self.apply_ir_filters(&ir, opt_pipeline_options);
         self.breakdown_output(preprocessed_lines, opt_pipeline_options)
     }
 }
@@ -439,21 +425,11 @@ fn passes_match(before: &str, after: &str) -> bool {
     before == after
 }
 
-fn parse_output(output: &str) -> Vec<ResultLine> {
-    output
-        .lines()
-        .map(|line| ResultLine {
-            text: line.to_string(),
-        })
-        .collect()
-}
-
 fn main() -> Result<(), Box<dyn Error>> {
     let dump = std::fs::read_to_string("dump.txt").unwrap();
-    let lines = parse_output(&dump);
     let llvm_pass_dump_parser = LlvmPassDumpParser::new();
     let result = llvm_pass_dump_parser.process(
-        lines,
+        &dump,
         &OptPipelineBackendOptions {
             filter_debug_info: true,
             filter_ir_metadata: true,
@@ -464,7 +440,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         },
     );
 
-    // println!("{:#?}", result);
+    println!("{:#?}", result);
+    return Ok(());
     let pass_names = result["a"]
         .iter()
         .map(|x| x.name.clone())
@@ -631,10 +608,7 @@ fn generate_fake_names(pass_names: Vec<String>) -> Vec<Data> {
     (0..20)
         .map(|i| {
             // let name = name::full();
-            let name = pass_names
-                .get(i)
-                .unwrap_or(&name::full())
-                .to_owned();
+            let name = pass_names.get(i).unwrap_or(&name::full()).to_owned();
             let address = format!(
                 "{}\n{}, {} {}",
                 address::street(),
