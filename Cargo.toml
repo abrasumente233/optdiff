@@ -7,4 +7,6 @@ edition = "2021"
 
 [dependencies]
 itertools = "0.12.1"
+pager = "0.16.1"
 regex = "1.10.4"
+tempfile = "3"
