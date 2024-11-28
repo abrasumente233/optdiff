@@ -1,10 +1,12 @@
 use clap::Parser;
+use is_terminal::IsTerminal;
 use pager::Pager;
 use std::error::Error;
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
 use std::process::Command;
 use tempfile::NamedTempFile;
+
 mod optpipeline;
 
 #[derive(Parser)]
@@ -44,7 +46,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     let dump = read_input(&args).map_err(|e| format!("Failed to read input: {}", e))?;
     let result = optpipeline::process(&dump);
 
-    Pager::with_default_pager("less -R").setup();
+    let is_terminal = std::io::stdout().is_terminal();
+    if is_terminal {
+        Pager::with_default_pager("less -R").setup();
+    }
 
     for (func, pipeline) in result.iter() {
         println!("Function: {}\n", func);
@@ -56,7 +61,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             let status = Command::new("difft")
                 .arg("--color")
-                .arg("always")
+                .arg(if is_terminal { "always" } else { "never" })
                 .arg(&pass.name)
                 .arg(old.path().to_str().unwrap())
                 .arg("0000000000000000000000000000000000000000")
