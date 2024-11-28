@@ -1,5 +1,7 @@
 *.o
 *.ll
+*.s
+*dump*.txt
 
 
 # Added by cargo
