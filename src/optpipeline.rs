@@ -382,7 +382,7 @@ impl LlvmPassDumpParser {
                 for re in &line_filters {
                     l = re.replace_all(&l, "").to_string();
                 }
-                line
+                l
             })
             .join("\n")
     }
