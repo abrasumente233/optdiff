@@ -1,11 +1,13 @@
 use clap::{Parser, ValueEnum};
 use is_terminal::IsTerminal;
-use pager::Pager;
 use std::error::Error;
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
 use std::process::Command;
 use tempfile::NamedTempFile;
+
+#[cfg(unix)]
+use pager::Pager;
 
 mod optpipeline;
 
@@ -61,6 +63,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         ColorChoice::Never => false,
     };
 
+    #[cfg(unix)]
     if is_terminal {
         Pager::with_default_pager("less -R").setup();
     }

@@ -4,7 +4,7 @@ version = "0.2.0"
 edition = "2021"
 license = "BSD-2-Clause"
 description = "A CLI tool that displays diffs of LLVM IR changes between optimization passes"
-respository = "https://github.com/abrasumente233/op"
+repository = "https://github.com/abrasumente233/op"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
