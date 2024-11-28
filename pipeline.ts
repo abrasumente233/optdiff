@@ -540,7 +540,7 @@ export function parseOutput(output: string): ResultLine[] {
 }
 
 
-const dump = await Deno.readTextFile('dump.txt');
+const dump = await Deno.readTextFile('dump-square.txt');
 const lines = parseOutput(dump);
 const llvmPassDumpParser = new LlvmPassDumpParser({});
 const result = llvmPassDumpParser.process(lines, {
@@ -553,3 +553,5 @@ const result = llvmPassDumpParser.process(lines, {
 });
 
 console.log(result);
+// output result to disk output.json
+await Deno.writeTextFile('output.json', JSON.stringify(result, null, 2));

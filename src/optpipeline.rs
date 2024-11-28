@@ -97,9 +97,9 @@ impl LlvmPassDumpParser {
         let mut last_was_blank = false;
 
         for line in ir.lines() {
-            if self.machine_code_dump_header.is_match(line) {
-                break;
-            }
+            // if self.machine_code_dump_header.is_match(line) {
+            //     break;
+            // }
             let ir_match = self.ir_dump_header.captures(line);
             let machine_match = self.machine_code_dump_header.captures(line);
             let machine_match_is_some = machine_match.is_some();
