@@ -1,6 +1,6 @@
 [package]
 name = "optpipeline"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 license = "BSD-2-Clause"
 description = "A CLI tool that displays diffs of LLVM IR changes between optimization passes"
