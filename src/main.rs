@@ -28,7 +28,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut after = NamedTempFile::new()?;
     writeln!(after, "hello world")?;
 
-    for pass in &result["a"] {
+    // for pass in &result["a"] {
+    for pass in result.values().next().expect("No passes dump found in input") {
         let mut old = NamedTempFile::new()?;
         write!(old, "{}", pass.before)?;
         let mut new = NamedTempFile::new()?;
