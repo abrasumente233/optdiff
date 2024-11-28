@@ -8,7 +8,7 @@ mod optpipeline;
 
 fn main() -> Result<(), Box<dyn Error>> {
     Pager::with_default_pager("less -R").setup();
-    let dump = std::fs::read_to_string("dump.txt").unwrap();
+    let dump = std::fs::read_to_string("dumpfuck.txt").unwrap();
     let result = optpipeline::process(&dump);
     //println!("{:#?}", result);
 
