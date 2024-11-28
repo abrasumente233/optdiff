@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 atty = "0.2.14"
+clap = { version = "4.5.21", features = ["derive"] }
 itertools = "0.12.1"
 pager = "0.16.1"
 regex = "1.10.4"
