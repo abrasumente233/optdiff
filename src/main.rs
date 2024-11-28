@@ -8,7 +8,11 @@ use tempfile::NamedTempFile;
 mod optpipeline;
 
 #[derive(Parser)]
-#[command(author, version, about = "Display diffs of LLVM IR changes between optimization passes")]
+#[command(
+    author,
+    version,
+    about = "Display diffs of LLVM IR changes between optimization passes"
+)]
 // #[command(long_about = "Takes LLVM optimization pass dumps generated with -print-before-all and \
 //    -print-after-all flags and displays the difference in IR before and after each pass. \
 //    The input can be provided as a file or through stdin.")]
@@ -40,37 +44,34 @@ fn main() -> Result<(), Box<dyn Error>> {
     let dump = read_input(&args).map_err(|e| format!("Failed to read input: {}", e))?;
     let result = optpipeline::process(&dump);
 
-    let first_func = result
-        .values()
-        .next()
-        .expect("No passes dump found in input");
-
     Pager::with_default_pager("less -R").setup();
 
-    // for pass in &result["a"] {
-    for pass in first_func {
-        let mut old = NamedTempFile::new()?;
-        write!(old, "{}", pass.before)?;
-        let mut new = NamedTempFile::new()?;
-        write!(new, "{}", pass.after)?;
+    for (func, pipeline) in result.iter() {
+        println!("Function: {}\n", func);
+        for pass in pipeline {
+            let mut old = NamedTempFile::new()?;
+            write!(old, "{}", pass.before)?;
+            let mut new = NamedTempFile::new()?;
+            write!(new, "{}", pass.after)?;
 
-        let status = Command::new("difft")
-            .arg("--color")
-            .arg("always")
-            .arg(&pass.name)
-            .arg(old.path().to_str().unwrap())
-            .arg("0000000000000000000000000000000000000000")
-            .arg("100644")
-            .arg(new.path().to_str().unwrap())
-            .arg("0000000000000000000000000000000000000000")
-            .arg("100644")
-            .env("GIT_DIFF_PATH_TOTAL", "15")
-            .env("GIT_DIFF_PATH_COUNTER", "13")
-            .status()
-            .map_err(|e| format!("Failed to execute difft: {}", e))?;
+            let status = Command::new("difft")
+                .arg("--color")
+                .arg("always")
+                .arg(&pass.name)
+                .arg(old.path().to_str().unwrap())
+                .arg("0000000000000000000000000000000000000000")
+                .arg("100644")
+                .arg(new.path().to_str().unwrap())
+                .arg("0000000000000000000000000000000000000000")
+                .arg("100644")
+                .env("GIT_DIFF_PATH_TOTAL", "15")
+                .env("GIT_DIFF_PATH_COUNTER", "13")
+                .status()
+                .map_err(|e| format!("Failed to execute difft: {}", e))?;
 
-        if !status.success() {
-            return Err("difft command failed".into());
+            if !status.success() {
+                return Err("difft command failed".into());
+            }
         }
     }
 
