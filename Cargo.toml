@@ -2,6 +2,9 @@
 name = "optpipeline"
 version = "0.1.8"
 edition = "2021"
+license = "BSD-2-Clause"
+description = "A CLI tool that displays diffs of LLVM IR changes between optimization passes"
+respository = "https://github.com/abrasumente233/op"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -12,3 +15,6 @@ itertools = "0.12.1"
 pager = "0.16.1"
 regex = "1.10.4"
 tempfile = "3"
+
+[package.metadata.release]
+publish = false
