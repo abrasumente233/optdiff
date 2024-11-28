@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use is_terminal::IsTerminal;
 use pager::Pager;
 use std::error::Error;
@@ -8,6 +8,13 @@ use std::process::Command;
 use tempfile::NamedTempFile;
 
 mod optpipeline;
+
+#[derive(Parser, Clone, ValueEnum)]
+enum ColorChoice {
+    Auto,
+    Always,
+    Never,
+}
 
 #[derive(Parser)]
 #[command(
@@ -25,6 +32,10 @@ struct Args {
     /// Path to LLVM pass dump file. If not provided, reads from stdin
     #[arg(value_name = "FILE")]
     input: Option<PathBuf>,
+
+    /// When to use color output
+    #[arg(long, value_enum, default_value_t = ColorChoice::Auto)]
+    color: ColorChoice,
 }
 
 fn read_input(args: &Args) -> Result<String, io::Error> {
@@ -44,6 +55,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     let result = optpipeline::process(&dump);
 
     let is_terminal = std::io::stdout().is_terminal();
+    let use_color = match args.color {
+        ColorChoice::Auto => is_terminal,
+        ColorChoice::Always => true,
+        ColorChoice::Never => false,
+    };
+
     if is_terminal {
         Pager::with_default_pager("less -R").setup();
     }
@@ -58,7 +75,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             let status = Command::new("difft")
                 .arg("--color")
-                .arg(if is_terminal { "always" } else { "never" })
+                .arg(if use_color { "always" } else { "never" })
                 .arg(&pass.name)
                 .arg(old.path().to_str().unwrap())
                 .arg("0000000000000000000000000000000000000000")
