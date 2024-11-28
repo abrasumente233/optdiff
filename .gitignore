@@ -3,5 +3,6 @@
 *.s
 *dump*.txt
 *.c
+*.cpp
 
 /target
