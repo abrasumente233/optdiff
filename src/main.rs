@@ -15,9 +15,6 @@ mod optpipeline;
     version,
     about = "Display diffs of LLVM IR changes between optimization passes"
 )]
-// #[command(long_about = "Takes LLVM optimization pass dumps generated with -print-before-all and \
-//    -print-after-all flags and displays the difference in IR before and after each pass. \
-//    The input can be provided as a file or through stdin.")]
 #[command(after_help = "Example:
    # View optimization changes for function 'foo':
    clang input.c -O2 -mllvm -print-before-all -mllvm -print-after-all -mllvm -filter-print-funcs=foo -S -emit-llvm 2>&1 | optpipeline
