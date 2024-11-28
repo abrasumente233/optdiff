@@ -2,8 +2,6 @@
 *.ll
 *.s
 *dump*.txt
-
-
-# Added by cargo
+*.c
 
 /target
