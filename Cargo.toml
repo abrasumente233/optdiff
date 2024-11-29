@@ -1,6 +1,6 @@
 [package]
 name = "optdiff"
-version = "0.4.1"
+version = "0.4.2"
 edition = "2021"
 license = "BSD-2-Clause"
 description = "A CLI tool that displays diffs of LLVM IR changes between optimization passes"
