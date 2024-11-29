@@ -27,7 +27,9 @@ enum ColorChoice {
 )]
 #[command(after_help = "Example:
    # View optimization changes for function 'foo':
-   clang input.c -O2 -mllvm -print-before-all -mllvm -print-after-all -mllvm -filter-print-funcs=foo -S -emit-llvm 2>&1 | optdiff
+   clang input.c -O2 -mllvm -print-before-all -mllvm -print-after-all -mllvm -filter-print-funcs=foo -c -o /dev/null 2>&1 | optdiff
+
+   # `-mllvm -filter-print-funcs=foo` is optional and if left out, optdiff will print diffs for all functions in the dump.
 
    # From a saved dump file:
    optdiff dump.txt")]
