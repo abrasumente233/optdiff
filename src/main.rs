@@ -38,6 +38,10 @@ struct Args {
     /// When to use color output
     #[arg(long, value_enum, default_value_t = ColorChoice::Auto)]
     color: ColorChoice,
+
+    /// Hide optimization passes that don't modify the IR
+    #[arg(short = 's', long = "skip-unchanged", default_value_t = false)]
+    skip_unchanged: bool,
 }
 
 fn read_input(args: &Args) -> Result<String, io::Error> {
@@ -71,6 +75,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     for (func, pipeline) in result.iter() {
         println!("Function: {}\n", func);
         for pass in pipeline {
+            if args.skip_unchanged && pass.before == pass.after {
+                continue;
+            }
+
             let mut old = NamedTempFile::new()?;
             write!(old, "{}", pass.before)?;
             let mut new = NamedTempFile::new()?;
