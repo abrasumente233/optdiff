@@ -89,6 +89,15 @@ fn enter_pager() {
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
     let dump = read_input(&args).map_err(|e| format!("Failed to read input: {}", e))?;
+
+    if !dump.contains("IR Dump Before") {
+        return Err("Did you forget to add `-mllvm -print-before-all`?".into());
+    }
+
+    if !dump.contains("IR Dump After") {
+        return Err("Did you forget to add `-mllvm -print-after-all`?".into());
+    }
+
     let result = optpipeline::process(&dump);
 
     if args.list {
