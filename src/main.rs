@@ -60,7 +60,7 @@ fn print_func(
     skip_unchanged: bool,
 ) -> Result<(), Box<dyn Error>> {
     println!("Function: {}\n", func_name);
-    for pass in pipeline {
+    for (i, pass) in pipeline.iter().enumerate() {
         if skip_unchanged && pass.before == pass.after {
             continue;
         }
@@ -69,9 +69,10 @@ fn print_func(
         let after = pass.after.clone() + "\n";
         let diff = TextDiff::from_lines(&before, &after);
 
-        println!("diff --git a/{} b/{}", &pass.name, &pass.name);
-        println!("--- a/{}", &pass.name);
-        println!("+++ b/{}", &pass.name);
+        let title = format!("{}. {}", i + 1, &pass.name);
+        println!("diff --git a/{} b/{}", title, title);
+        println!("--- a/{}", title);
+        println!("+++ b/{}", title);
         println!("{}", diff.unified_diff().context_radius(10));
     }
 
