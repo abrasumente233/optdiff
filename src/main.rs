@@ -1,5 +1,6 @@
 use clap::{Parser, ValueEnum};
 use is_terminal::IsTerminal;
+use optpipeline::Pass;
 use std::error::Error;
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
@@ -42,6 +43,10 @@ struct Args {
     /// Hide optimization passes that don't modify the IR
     #[arg(short = 's', long = "skip-unchanged", default_value_t = false)]
     skip_unchanged: bool,
+
+    /// Only show passes for specified function
+    #[arg(short = 'f', long = "function")]
+    function: Option<String>,
 }
 
 fn read_input(args: &Args) -> Result<String, io::Error> {
@@ -52,6 +57,54 @@ fn read_input(args: &Args) -> Result<String, io::Error> {
             io::stdin().read_to_string(&mut buffer)?;
             Ok(buffer)
         }
+    }
+}
+
+fn print_func(
+    func_name: &str,
+    pipeline: &[Pass],
+    skip_unchanged: bool,
+    use_color: bool,
+) -> Result<(), Box<dyn Error>> {
+    println!("Function: {}\n", func_name);
+    for pass in pipeline {
+        if skip_unchanged && pass.before == pass.after {
+            continue;
+        }
+
+        let mut old = NamedTempFile::new()?;
+        write!(old, "{}", pass.before)?;
+        let mut new = NamedTempFile::new()?;
+        write!(new, "{}", pass.after)?;
+
+        let status = Command::new("difft")
+            .arg("--color")
+            .arg(if use_color { "always" } else { "never" })
+            .arg(&pass.name)
+            .arg(old.path().to_str().unwrap())
+            .arg("0000000000000000000000000000000000000000")
+            .arg("100644")
+            .arg(new.path().to_str().unwrap())
+            .arg("0000000000000000000000000000000000000000")
+            .arg("100644")
+            .env("GIT_DIFF_PATH_TOTAL", "15")
+            .env("GIT_DIFF_PATH_COUNTER", "13")
+            .status()
+            .map_err(|e| format!("Failed to execute difft: {}", e))?;
+
+        if !status.success() {
+            return Err("difft command failed".into());
+        }
+    }
+
+    Ok(())
+}
+
+fn enter_pager() {
+    let is_terminal = std::io::stdout().is_terminal();
+    #[cfg(unix)]
+    if is_terminal {
+        Pager::with_default_pager("less -R").setup();
     }
 }
 
@@ -67,41 +120,17 @@ fn main() -> Result<(), Box<dyn Error>> {
         ColorChoice::Never => false,
     };
 
-    #[cfg(unix)]
-    if is_terminal {
-        Pager::with_default_pager("less -R").setup();
-    }
-
-    for (func, pipeline) in result.iter() {
-        println!("Function: {}\n", func);
-        for pass in pipeline {
-            if args.skip_unchanged && pass.before == pass.after {
-                continue;
-            }
-
-            let mut old = NamedTempFile::new()?;
-            write!(old, "{}", pass.before)?;
-            let mut new = NamedTempFile::new()?;
-            write!(new, "{}", pass.after)?;
-
-            let status = Command::new("difft")
-                .arg("--color")
-                .arg(if use_color { "always" } else { "never" })
-                .arg(&pass.name)
-                .arg(old.path().to_str().unwrap())
-                .arg("0000000000000000000000000000000000000000")
-                .arg("100644")
-                .arg(new.path().to_str().unwrap())
-                .arg("0000000000000000000000000000000000000000")
-                .arg("100644")
-                .env("GIT_DIFF_PATH_TOTAL", "15")
-                .env("GIT_DIFF_PATH_COUNTER", "13")
-                .status()
-                .map_err(|e| format!("Failed to execute difft: {}", e))?;
-
-            if !status.success() {
-                return Err("difft command failed".into());
-            }
+    if let Some(expected) = args.function {
+        let (func_name, pipeline) = result
+            .iter()
+            .find(|(func_name, _)| *func_name == &expected)
+            .ok_or_else(|| format!("Function '{}' was not found in the input", expected))?;
+        enter_pager();
+        print_func(func_name, pipeline, args.skip_unchanged, use_color)?;
+    } else {
+        enter_pager();
+        for (func, pipeline) in result.iter() {
+            print_func(func, pipeline, args.skip_unchanged, use_color)?;
         }
     }
 
