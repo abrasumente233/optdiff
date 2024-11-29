@@ -43,12 +43,16 @@ struct Args {
     color: ColorChoice,
 
     /// Hide optimization passes that don't modify the IR
-    #[arg(short = 's', long = "skip-unchanged", default_value_t = false)]
+    #[arg(short = 's', long = "skip-unchanged")]
     skip_unchanged: bool,
 
     /// Only show passes for specified function
     #[arg(short = 'f', long = "function")]
     function: Option<String>,
+
+    /// List available functions
+    #[arg(short = 'l', long = "list")]
+    list: bool,
 }
 
 fn read_input(args: &Args) -> Result<String, io::Error> {
@@ -121,6 +125,13 @@ fn main() -> Result<(), Box<dyn Error>> {
         ColorChoice::Always => true,
         ColorChoice::Never => false,
     };
+
+    if args.list {
+        for func in result.keys() {
+            println!("{func}");
+        }
+        return Ok(());
+    }
 
     if let Some(expected) = args.function {
         let (func_name, pipeline) = result
