@@ -1,23 +1,15 @@
-use clap::{Parser, ValueEnum};
+use clap::Parser;
 use is_terminal::IsTerminal;
 use optpipeline::Pass;
+use similar::TextDiff;
 use std::error::Error;
-use std::io::{self, Read, Write};
+use std::io::{self, Read};
 use std::path::PathBuf;
-use std::process::Command;
-use tempfile::NamedTempFile;
 
 #[cfg(unix)]
 use pager::Pager;
 
 mod optpipeline;
-
-#[derive(Parser, Clone, ValueEnum)]
-enum ColorChoice {
-    Auto,
-    Always,
-    Never,
-}
 
 #[derive(Parser)]
 #[command(
@@ -37,10 +29,6 @@ struct Args {
     /// Path to LLVM pass dump file. If not provided, reads from stdin
     #[arg(value_name = "FILE")]
     input: Option<PathBuf>,
-
-    /// When to use color output
-    #[arg(long, value_enum, default_value_t = ColorChoice::Auto)]
-    color: ColorChoice,
 
     /// Hide optimization passes that don't modify the IR
     #[arg(short = 's', long = "skip-unchanged")]
@@ -70,7 +58,6 @@ fn print_func(
     func_name: &str,
     pipeline: &[Pass],
     skip_unchanged: bool,
-    use_color: bool,
 ) -> Result<(), Box<dyn Error>> {
     println!("Function: {}\n", func_name);
     for pass in pipeline {
@@ -78,38 +65,22 @@ fn print_func(
             continue;
         }
 
-        let mut old = NamedTempFile::new()?;
-        write!(old, "{}", pass.before)?;
-        let mut new = NamedTempFile::new()?;
-        write!(new, "{}", pass.after)?;
+        let before = pass.before.clone() + "\n";
+        let after = pass.after.clone() + "\n";
+        let diff = TextDiff::from_lines(&before, &after);
 
-        let status = Command::new("difft")
-            .arg("--color")
-            .arg(if use_color { "always" } else { "never" })
-            .arg(&pass.name)
-            .arg(old.path().to_str().unwrap())
-            .arg("0000000000000000000000000000000000000000")
-            .arg("100644")
-            .arg(new.path().to_str().unwrap())
-            .arg("0000000000000000000000000000000000000000")
-            .arg("100644")
-            .env("GIT_DIFF_PATH_TOTAL", "15")
-            .env("GIT_DIFF_PATH_COUNTER", "13")
-            .status()
-            .map_err(|e| format!("Failed to execute difft: {}", e))?;
-
-        if !status.success() {
-            return Err("difft command failed".into());
-        }
+        println!("diff --git a/{} b/{}", &pass.name, &pass.name);
+        println!("--- a/{}", &pass.name);
+        println!("+++ b/{}", &pass.name);
+        println!("{}", diff.unified_diff().context_radius(10));
     }
 
     Ok(())
 }
 
 fn enter_pager() {
-    let is_terminal = std::io::stdout().is_terminal();
     #[cfg(unix)]
-    if is_terminal {
+    if std::io::stdout().is_terminal() {
         Pager::with_default_pager("less -R").setup();
     }
 }
@@ -118,13 +89,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
     let dump = read_input(&args).map_err(|e| format!("Failed to read input: {}", e))?;
     let result = optpipeline::process(&dump);
-
-    let is_terminal = std::io::stdout().is_terminal();
-    let use_color = match args.color {
-        ColorChoice::Auto => is_terminal,
-        ColorChoice::Always => true,
-        ColorChoice::Never => false,
-    };
 
     if args.list {
         for func in result.keys() {
@@ -139,11 +103,11 @@ fn main() -> Result<(), Box<dyn Error>> {
             .find(|(func_name, _)| *func_name == &expected)
             .ok_or_else(|| format!("Function '{}' was not found in the input", expected))?;
         enter_pager();
-        print_func(func_name, pipeline, args.skip_unchanged, use_color)?;
+        print_func(func_name, pipeline, args.skip_unchanged)?;
     } else {
         enter_pager();
         for (func, pipeline) in result.iter() {
-            print_func(func, pipeline, args.skip_unchanged, use_color)?;
+            print_func(func, pipeline, args.skip_unchanged)?;
         }
     }
 
