@@ -6,8 +6,8 @@ on:
     ## - release
 
 env:
-  BIN_NAME: optpipeline
-  PROJECT_NAME: optpipeline
+  BIN_NAME: optdiff
+  PROJECT_NAME: optdiff
 
 jobs:
   dist:

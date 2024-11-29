@@ -1,12 +1,10 @@
 [package]
-name = "optpipeline"
+name = "optdiff"
 version = "0.2.2"
 edition = "2021"
 license = "BSD-2-Clause"
 description = "A CLI tool that displays diffs of LLVM IR changes between optimization passes"
-repository = "https://github.com/abrasumente233/op"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+repository = "https://github.com/abrasumente233/optdiff"
 
 [dependencies]
 clap = { version = "4.5.21", features = ["derive"] }
@@ -17,7 +15,6 @@ tempfile = "3"
 
 [target.'cfg(unix)'.dependencies]
 pager = "0.16.1"
-
 
 [package.metadata.release]
 publish = false

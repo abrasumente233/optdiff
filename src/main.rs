@@ -26,10 +26,10 @@ enum ColorChoice {
 )]
 #[command(after_help = "Example:
    # View optimization changes for function 'foo':
-   clang input.c -O2 -mllvm -print-before-all -mllvm -print-after-all -mllvm -filter-print-funcs=foo -S -emit-llvm 2>&1 | optpipeline
+   clang input.c -O2 -mllvm -print-before-all -mllvm -print-after-all -mllvm -filter-print-funcs=foo -S -emit-llvm 2>&1 | optdiff
 
    # From a saved dump file:
-   optpipeline dump.txt")]
+   optdiff dump.txt")]
 struct Args {
     /// Path to LLVM pass dump file. If not provided, reads from stdin
     #[arg(value_name = "FILE")]
