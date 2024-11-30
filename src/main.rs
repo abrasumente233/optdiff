@@ -123,8 +123,7 @@ fn main() -> Result<()> {
     color_eyre::install()?;
 
     let args = Args::parse();
-    // let dump = read_input(&args).wrap_err_with(|| match &args.input {
-    let dump = read_input(&args).with_context(|| match &args.input {
+    let dump = read_input(&args).wrap_err_with(|| match &args.input {
         None => "Failed to read from stdin".to_string(),
         Some(path) => format!("Failed to read from file: {}", path.display()),
     })?;
