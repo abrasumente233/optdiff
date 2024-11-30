@@ -3,12 +3,13 @@ use is_terminal::IsTerminal;
 use optpipeline::Pass;
 use similar::TextDiff;
 use std::error::Error;
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 use std::path::PathBuf;
 
 #[cfg(unix)]
 use pager::Pager;
 
+mod cli_write;
 mod optpipeline;
 
 #[derive(Parser)]
@@ -41,6 +42,10 @@ struct Args {
     /// List available functions
     #[arg(short = 'l', long = "list")]
     list: bool,
+
+    /// Which pager to use
+    #[arg(short = 'p', long = "pager", env = "OPTDIFF_PAGER")]
+    pager: Option<String>,
 }
 
 fn read_input(args: &Args) -> Result<String, io::Error> {
@@ -59,7 +64,7 @@ fn print_func(
     pipeline: &[Pass],
     skip_unchanged: bool,
 ) -> Result<(), Box<dyn Error>> {
-    println!("Function: {}\n", func_name);
+    cli_writeln!(io::stdout(), "Function: {}\n", func_name)?;
     for (i, pass) in pipeline.iter().enumerate() {
         if skip_unchanged && pass.before == pass.after {
             continue;
@@ -70,21 +75,44 @@ fn print_func(
         let diff = TextDiff::from_lines(&before, &after);
 
         let title = format!("{}. {}", i + 1, &pass.name);
-        println!("diff --git a/{} b/{}", title, title);
-        println!("--- a/{}", title);
-        println!("+++ b/{}", title);
-        println!("{}", diff.unified_diff().context_radius(10));
+        let mut stdout = io::stdout();
+        cli_writeln!(stdout, "diff --git a/{} b/{}", title, title)?;
+        cli_writeln!(stdout, "--- a/{}", title)?;
+        cli_writeln!(stdout, "+++ b/{}", title)?;
+        cli_writeln!(stdout, "{}", diff.unified_diff().context_radius(10))?;
     }
 
     Ok(())
 }
 
-fn enter_pager() {
-    #[cfg(unix)]
-    if std::io::stdout().is_terminal() {
-        Pager::with_default_pager("less -R").setup();
+fn auto_select_pager() -> Option<&'static str> {
+    if which::which("delta").is_ok() {
+        Some("delta")
+    } else if which::which("riff").is_ok() {
+        Some("riff")
+    } else if which::which("less").is_ok() {
+        Some("less -R")
+    } else {
+        None
     }
 }
+
+#[cfg(unix)]
+fn enter_pager(pager: Option<&str>) {
+    if io::stdout().is_terminal() {
+        let pager = match pager {
+            None => auto_select_pager(),
+            Some(pager) if pager.trim().is_empty() => None,
+            Some(pager) => Some(pager),
+        };
+        if let Some(pager) = pager {
+            Pager::with_default_pager(pager).setup();
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn enter_pager(_pager: Option<&str>) {}
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
@@ -102,7 +130,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     if args.list {
         for func in result.keys() {
-            println!("{func}");
+            cli_writeln!(io::stdout(), "{func}")?;
         }
         return Ok(());
     }
@@ -112,10 +140,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             .iter()
             .find(|(func_name, _)| *func_name == &expected)
             .ok_or_else(|| format!("Function '{}' was not found in the input", expected))?;
-        enter_pager();
+        enter_pager(args.pager.as_deref());
         print_func(func_name, pipeline, args.skip_unchanged)?;
     } else {
-        enter_pager();
+        enter_pager(args.pager.as_deref());
         for (func, pipeline) in result.iter() {
             print_func(func, pipeline, args.skip_unchanged)?;
         }

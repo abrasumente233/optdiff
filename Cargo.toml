@@ -7,11 +7,12 @@ description = "A CLI tool that displays diffs of LLVM IR changes between optimiz
 repository = "https://github.com/abrasumente233/optdiff"
 
 [dependencies]
-clap = { version = "4.5.21", features = ["derive"] }
+clap = { version = "4.5.21", features = ["derive", "env"] }
 is-terminal = "0.4.13"
 itertools = "0.12.1"
 regex = "1.10.4"
 similar = "2.6.0"
+which = "7.0.0"
 
 [target.'cfg(unix)'.dependencies]
 pager = "0.16.1"
