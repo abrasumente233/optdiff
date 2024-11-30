@@ -1,4 +1,5 @@
 use clap::Parser;
+use color_print::cformat;
 use is_terminal::IsTerminal;
 use optpipeline::Pass;
 use similar::TextDiff;
@@ -18,14 +19,19 @@ mod optpipeline;
     version,
     about = "Display diffs of LLVM IR changes between optimization passes"
 )]
-#[command(after_help = "Example:
-   # View optimization changes for function 'foo':
+#[command(after_help = cformat!("<s><u>Note:</u></s>
+   For syntax highlighting of diffs, install delta: https://github.com/dandavison/delta
+
+<s><u>Examples:</u></s>
+   <i># View optimization changes:</i>
+   clang input.c -O2 -mllvm -print-before-all -mllvm -print-after-all -c -o /dev/null 2>&1 | optdiff
+
+   <i># To limit output to a specific function:</i>
    clang input.c -O2 -mllvm -print-before-all -mllvm -print-after-all -mllvm -filter-print-funcs=foo -c -o /dev/null 2>&1 | optdiff
 
-   # `-mllvm -filter-print-funcs=foo` is optional and if left out, optdiff will print diffs for all functions in the dump.
-
-   # From a saved dump file:
-   optdiff dump.txt")]
+   <i># From a saved dump file:</i>
+   clang input.c -O2 -mllvm -print-before-all -mllvm -print-after-all -c -o /dev/null &> dump.txt
+   optdiff dump.txt"))]
 struct Args {
     /// Path to LLVM pass dump file. If not provided, reads from stdin
     #[arg(value_name = "FILE")]
