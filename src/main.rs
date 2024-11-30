@@ -1,9 +1,12 @@
 use clap::Parser;
+use color_eyre::{
+    eyre::{eyre, WrapErr},
+    Result,
+};
 use color_print::cformat;
 use is_terminal::IsTerminal;
 use optpipeline::Pass;
 use similar::TextDiff;
-use std::error::Error;
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
 
@@ -65,11 +68,7 @@ fn read_input(args: &Args) -> Result<String, io::Error> {
     }
 }
 
-fn print_func(
-    func_name: &str,
-    pipeline: &[Pass],
-    skip_unchanged: bool,
-) -> Result<(), Box<dyn Error>> {
+fn print_func(func_name: &str, pipeline: &[Pass], skip_unchanged: bool) -> Result<()> {
     cli_writeln!(io::stdout(), "Function: {}\n", func_name)?;
     for (i, pass) in pipeline.iter().enumerate() {
         if skip_unchanged && pass.before == pass.after {
@@ -120,16 +119,22 @@ fn enter_pager(pager: Option<&str>) {
 #[cfg(not(unix))]
 fn enter_pager(_pager: Option<&str>) {}
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<()> {
+    color_eyre::install()?;
+
     let args = Args::parse();
-    let dump = read_input(&args).map_err(|e| format!("Failed to read input: {}", e))?;
+    // let dump = read_input(&args).wrap_err_with(|| match &args.input {
+    let dump = read_input(&args).with_context(|| match &args.input {
+        None => "Failed to read from stdin".to_string(),
+        Some(path) => format!("Failed to read from file: {}", path.display()),
+    })?;
 
     if !dump.contains("IR Dump Before") {
-        return Err("Did you forget to add `-mllvm -print-before-all`?".into());
+        return Err(eyre!("Did you forget to add `-mllvm -print-before-all`?"));
     }
 
     if !dump.contains("IR Dump After") {
-        return Err("Did you forget to add `-mllvm -print-after-all`?".into());
+        return Err(eyre!("Did you forget to add `-mllvm -print-after-all`?"));
     }
 
     let result = optpipeline::process(&dump);
@@ -145,7 +150,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let (func_name, pipeline) = result
             .iter()
             .find(|(func_name, _)| *func_name == &expected)
-            .ok_or_else(|| format!("Function '{}' was not found in the input", expected))?;
+            .ok_or_else(|| eyre!("Function '{}' was not found in the input, use option `--list/-l` to find out all available functions", expected))?;
         enter_pager(args.pager.as_deref());
         print_func(func_name, pipeline, args.skip_unchanged)?;
     } else {
