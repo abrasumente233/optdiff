@@ -6,10 +6,14 @@ use color_eyre::{
 use color_print::cformat;
 use is_terminal::IsTerminal;
 use itertools::Itertools;
+use memchr::memmem;
 use optpipeline::Pass;
 use similar::TextDiff;
-use std::io::{self, Read, Write};
 use std::path::PathBuf;
+use std::{
+    collections::HashSet,
+    io::{self, Read, Write},
+};
 
 #[cfg(unix)]
 use pager::Pager;
@@ -120,6 +124,30 @@ fn enter_pager(pager: Option<&str>) {
 #[cfg(not(unix))]
 fn enter_pager(_pager: Option<&str>) {}
 
+fn list_functions(dump: &str) -> HashSet<&str> {
+    let mut functions = HashSet::new();
+    let haystack = dump.as_bytes();
+    {
+        let it = memmem::find_iter(haystack, b"define ");
+        for start in it {
+            let start = start + memchr::memchr(b'@', &haystack[start..]).unwrap() + 1;
+            let end = memchr::memchr(b'(', &haystack[start..]).unwrap();
+            let name = &dump[start..start + end];
+            functions.insert(name);
+        }
+    }
+    {
+        let it = memmem::find_iter(haystack, b"# Machine code for function ");
+        for start in it {
+            let start = start + b"# Machine code for function ".len();
+            let end = memchr::memchr(b':', &haystack[start..]).unwrap();
+            let name = &dump[start..start + end];
+            functions.insert(name);
+        }
+    }
+    functions
+}
+
 fn main() -> Result<()> {
     color_eyre::install()?;
 
@@ -138,10 +166,7 @@ fn main() -> Result<()> {
     }
 
     if args.list {
-        let result = optpipeline::process(&dump, false);
-
-        // TODO: we might want to preserve insertion order
-        for func in result.keys().sorted() {
+        for func in list_functions(&dump).into_iter().sorted() {
             cli_writeln!(io::stdout(), "{func}")?;
         }
         return Ok(());
