@@ -42,15 +42,10 @@ struct SplitPassDump {
 }
 
 pub struct LlvmPassDumpParser {
-    filters: Vec<Regex>,
-    line_filters: Vec<Regex>,
-    debug_info_filters: Vec<Regex>,
-    debug_info_line_filters: Vec<Regex>,
-    metadata_line_filters: Vec<Regex>,
     ir_dump_header: Regex,
     machine_code_dump_header: Regex,
-    function_define: Regex,
-    machine_function_begin: Regex,
+    // function_define: Regex,
+    // machine_function_begin: Regex,
     function_end: Regex,
     machine_function_end: Regex,
 }
@@ -58,35 +53,14 @@ pub struct LlvmPassDumpParser {
 impl LlvmPassDumpParser {
     fn new() -> Self {
         LlvmPassDumpParser {
-            filters: vec![
-                Regex::new(r"^; ModuleID = '.+'$").unwrap(),
-                Regex::new(r"^(source_filename|target datalayout|target triple) = '.+'$").unwrap(),
-                Regex::new(r"^; Function Attrs: .+$").unwrap(),
-                Regex::new(r"^declare .+$").unwrap(),
-                Regex::new(r"^attributes #\d+ = \{ .+ \}$").unwrap(),
-            ],
-            //line_filters: vec![Regex::new(r",? #\d+((?=( {)?$))").unwrap()],
-            line_filters: vec![Regex::new(r",? #\d+( \{)?$").unwrap()],
-            debug_info_filters: vec![
-                Regex::new(r"^\s+(tail\s)?call void @llvm\.dbg.+$").unwrap(),
-                Regex::new(r"^\s+DBG_.+$").unwrap(),
-                Regex::new(r"^(!\d+) = (?:distinct )?!DI([A-Za-z]+)\(([^)]+?)\)").unwrap(),
-                Regex::new(r"^(!\d+) = (?:distinct )?!\{.*\}").unwrap(),
-                Regex::new(r"^(![.A-Z_a-z-]+) = (?:distinct )?!\{.*\}").unwrap(),
-            ],
-            debug_info_line_filters: vec![
-                Regex::new(r",? !dbg !\d+").unwrap(),
-                Regex::new(r",? debug-location !\d+").unwrap(),
-            ],
-            metadata_line_filters: vec![Regex::new(r",?(?: ![\d.A-Za-z]+){2}").unwrap()],
             ir_dump_header: Regex::new(
                 r"^;?\s?\*{3} (.+) \*{3}(?:\s+\((?:function: |loop: )(%?[\w$.]+)\))?(?:;.+)?$",
             )
             .unwrap(),
             machine_code_dump_header: Regex::new(r"^# \*{3} (.+) \*{3}:$").unwrap(),
-            function_define: Regex::new(r"^define .+ @([\w.]+|'[^']+')\(.+$").unwrap(),
-            machine_function_begin: Regex::new(r"^# Machine code for function ([\w$.]+):.*$")
-                .unwrap(),
+            // function_define: Regex::new(r"^define .+ @([\w.]+|'[^']+')\(.+$").unwrap(),
+            // machine_function_begin: Regex::new(r"^# Machine code for function ([\w$.]+):.*$")
+            //     .unwrap(),
             function_end: Regex::new(r"^}$").unwrap(),
             machine_function_end: Regex::new(r"^# End machine code for function ([\w$.]+).$")
                 .unwrap(),
@@ -386,27 +360,52 @@ impl LlvmPassDumpParser {
         ir: &str,
         opt_pipeline_options: &OptPipelineBackendOptions,
     ) -> String {
-        let mut filters = self.filters.clone();
-        let mut line_filters = self.line_filters.clone();
+        let mut inline_filters = vec![r"(?m),? #\d+( \{)?$"];
+        let mut line_filters = vec![
+            r"; ModuleID = '.+'",
+            r"(source_filename|target datalayout|target triple) = '.+'",
+            r"; Function Attrs: .+",
+            r"declare .+",
+            r"attributes #\d+ = \{ .+ \}",
+        ];
+
+        let debug_inline_filters = [r",? !dbg !\d+", r",? debug-location !\d+"];
+        let metadata_inline_filters = [r",?(?: ![\d.A-Za-z]+){2}"];
+
+        let debug_line_filters = [
+            r"\s+(tail\s)?call void @llvm\.dbg.+",
+            r"[ \t]+DBG_.+",
+            r"(!\d+) = (?:distinct )?!DI([A-Za-z]+)\(([^)]+?)\).*", // appended .*
+            r"(!\d+) = (?:distinct )?!\{.*\}.*",                    // appended .*
+            r"(![.A-Z_a-z-]+) = (?:distinct )?!\{.*\}.*",           // appended .*
+        ];
 
         if opt_pipeline_options.filter_debug_info {
-            filters.extend(self.debug_info_filters.clone());
-            line_filters.extend(self.debug_info_line_filters.clone());
-        }
-        if opt_pipeline_options.filter_ir_metadata {
-            line_filters.extend(self.metadata_line_filters.clone());
+            line_filters.extend(debug_line_filters);
+            inline_filters.extend(debug_inline_filters);
         }
 
-        ir.lines()
-            .filter(|line| filters.iter().all(|re| !re.is_match(line)))
-            .map(|line| {
-                let mut l = line.to_string();
-                for re in &line_filters {
-                    l = re.replace_all(&l, "").to_string();
-                }
-                l
-            })
-            .join("\n")
+        if opt_pipeline_options.filter_ir_metadata {
+            inline_filters.extend(metadata_inline_filters);
+        }
+
+        let line_re = line_filters
+            .into_iter()
+            .map(|re| format!(r"(?:{})", re))
+            .join("|")
+            .to_string();
+        let line_re = format!(r"(?m)^(:?{})(?:\r\n|\n|\r)", line_re);
+
+        let inline_re = inline_filters
+            .into_iter()
+            .map(|re| format!(r"(?:{})", re))
+            .join("|")
+            .to_string();
+
+        let combined = format!("(:?{})|(:?{})", line_re, inline_re);
+        let re = Regex::new(&combined).unwrap();
+
+        re.replace_all(ir, "").to_string()
     }
 
     fn process(
