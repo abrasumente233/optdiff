@@ -5,6 +5,7 @@ use color_eyre::{
 };
 use color_print::cformat;
 use is_terminal::IsTerminal;
+use itertools::Itertools;
 use optpipeline::Pass;
 use similar::TextDiff;
 use std::io::{self, Read, Write};
@@ -139,7 +140,8 @@ fn main() -> Result<()> {
     let result = optpipeline::process(&dump);
 
     if args.list {
-        for func in result.keys() {
+        // TODO: we might want to preserve insertion order
+        for func in result.keys().sorted() {
             cli_writeln!(io::stdout(), "{func}")?;
         }
         return Ok(());
