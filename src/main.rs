@@ -137,15 +137,17 @@ fn main() -> Result<()> {
         return Err(eyre!("Did you forget to add `-mllvm -print-after-all`?"));
     }
 
-    let result = optpipeline::process(&dump);
-
     if args.list {
+        let result = optpipeline::process(&dump, false);
+
         // TODO: we might want to preserve insertion order
         for func in result.keys().sorted() {
             cli_writeln!(io::stdout(), "{func}")?;
         }
         return Ok(());
     }
+
+    let result = optpipeline::process(&dump, true);
 
     if let Some(expected) = args.function {
         let (func_name, pipeline) = result

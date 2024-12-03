@@ -22,6 +22,7 @@ struct OptPipelineBackendOptions {
     no_discard_value_names: bool,
     demangle: bool,
     library_functions: bool,
+    apply_filters: bool,
 }
 
 #[derive(Debug)]
@@ -398,8 +399,11 @@ impl LlvmPassDumpParser {
                 !self.ir_dump_header.is_match(line) && !self.machine_code_dump_header.is_match(line)
             })
             .join("\n");
-        let preprocessed_lines = self.apply_ir_filters(&ir, opt_pipeline_options);
-        self.breakdown_output(preprocessed_lines, opt_pipeline_options)
+        let ir = match opt_pipeline_options.apply_filters {
+            true => self.apply_ir_filters(&ir, opt_pipeline_options),
+            false => ir,
+        };
+        self.breakdown_output(ir, opt_pipeline_options)
     }
 }
 
@@ -414,7 +418,7 @@ fn passes_match(before: &str, after: &str) -> bool {
     before == after
 }
 
-pub fn process(dump: &str) -> OptPipelineResults {
+pub fn process(dump: &str, apply_filters: bool) -> OptPipelineResults {
     let llvm_pass_dump_parser = LlvmPassDumpParser::new();
     llvm_pass_dump_parser.process(
         dump,
@@ -425,6 +429,7 @@ pub fn process(dump: &str) -> OptPipelineResults {
             no_discard_value_names: false,
             demangle: false,
             library_functions: false,
+            apply_filters,
         },
     )
 }
