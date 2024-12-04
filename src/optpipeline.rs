@@ -93,7 +93,7 @@ impl LlvmPassDumpParser {
         }
     }
 
-    fn breakdown_output_into_pass_dumps(&self, ir: String) -> Vec<PassDump> {
+    fn breakdown_output_into_pass_dumps(&self, ir: &str) -> Vec<PassDump> {
         let mut raw_passes = Vec::new();
         let mut pass: Option<PassDump> = None;
         let mut last_was_blank = false;
@@ -343,7 +343,7 @@ impl LlvmPassDumpParser {
 
     fn breakdown_output(
         &self,
-        ir: String,
+        ir: &str,
         opt_pipeline_options: &OptPipelineBackendOptions,
     ) -> OptPipelineResults {
         let raw_passes = self.breakdown_output_into_pass_dumps(ir);
@@ -411,8 +411,8 @@ impl LlvmPassDumpParser {
         };
         let ir = &output[offset..];
         let ir = match opt_pipeline_options.apply_filters {
-            true => self.apply_ir_filters(ir, opt_pipeline_options),
-            false => ir.to_string(),
+            true => &self.apply_ir_filters(ir, opt_pipeline_options),
+            false => ir,
         };
         self.breakdown_output(ir, opt_pipeline_options)
     }
