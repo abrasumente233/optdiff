@@ -149,22 +149,26 @@ impl LlvmPassDumpParser {
 
         for line in dump.lines.lines() {
             let line = line.to_string();
-            let ir_fn_match = self.function_define.captures(&line);
-            let machine_fn_match = self.machine_function_begin.captures(&line);
+            let is_ir_fn = line.starts_with("define ");
+            let is_machine_fn = line.starts_with("# Machine code for function ");
 
-            if let Some(ir_fn_match) = ir_fn_match {
+            if is_ir_fn {
                 if func.is_some() {
                     let (name, lines) = func.take().unwrap();
                     pass.functions.insert(name, lines);
                 }
-                func = Some((ir_fn_match[1].to_string(), vec![line]));
+                let name = &line[line.find('@').unwrap() + 1..];
+                let name = &name[..name.find('(').unwrap()];
+                func = Some((name.to_string(), vec![line]));
+
                 is_machine_function_open = false;
-            } else if let Some(machine_fn_match) = machine_fn_match {
+            } else if is_machine_fn {
                 if func.is_some() {
                     let (name, lines) = func.take().unwrap();
                     pass.functions.insert(name, lines);
                 }
-                func = Some((machine_fn_match[1].to_string(), vec![line]));
+                let name = &line["# Machine code for function ".len()..line.find(':').unwrap()];
+                func = Some((name.to_string(), vec![line]));
                 is_machine_function_open = true;
             } else if line.starts_with("; Preheader:") {
                 if func.is_none() {
