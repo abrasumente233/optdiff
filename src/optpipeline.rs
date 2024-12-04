@@ -99,24 +99,40 @@ impl LlvmPassDumpParser {
         let mut last_was_blank = false;
 
         for line in ir.lines() {
-            // if self.machine_code_dump_header.is_match(line) {
-            //     break;
-            // }
-            let ir_match = self.ir_dump_header.captures(line);
-            let machine_match = self.machine_code_dump_header.captures(line);
-            let machine_match_is_some = machine_match.is_some();
-            let header = ir_match.or(machine_match);
+            let is_header = line.starts_with("; *** ")
+                || line.starts_with("*** ")
+                || line.starts_with("# *** ");
 
-            if let Some(header) = header {
+            if is_header {
                 if let Some(current_pass) = pass.take() {
                     raw_passes.push(current_pass);
                 }
+                let header_prefix = if line.starts_with(';') || line.starts_with("#") {
+                    "; *** "
+                } else {
+                    "*** "
+                };
+                let header = &line[header_prefix.len()..];
+                let header = &header[..header.find(" ***").unwrap()];
+
+                let affected_function =
+                    if let Some(idx) = line.find("(function: ").or(line.find("(loop: ")) {
+                        let content = &line[idx + 1..];
+                        Some(
+                            content[content.find(' ').unwrap() + 1..content.find(')').unwrap()]
+                                .to_string(),
+                        )
+                    } else {
+                        None
+                    };
+
                 pass = Some(PassDump {
-                    header: header.get(1).unwrap().as_str().to_string(),
-                    affected_function: header.get(2).map(|m| m.as_str().to_string()),
-                    machine: machine_match_is_some,
+                    header: header.to_string(),
+                    affected_function,
+                    machine: line.starts_with("#"),
                     lines: String::new(),
                 });
+
                 last_was_blank = true;
             } else if let Some(ref mut current_pass) = pass {
                 if line.trim().is_empty() {
