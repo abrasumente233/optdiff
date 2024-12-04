@@ -183,7 +183,7 @@ fn main() -> Result<()> {
         print_func(func_name, pipeline, args.skip_unchanged)?;
     } else {
         enter_pager(args.pager.as_deref());
-        for (func, pipeline) in result.iter() {
+        for (func, pipeline) in result.iter().sorted_by_key(|(func, _)| *func) {
             print_func(func, pipeline, args.skip_unchanged)?;
         }
     }

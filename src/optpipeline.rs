@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use memchr::memchr_iter;
 use regex::Regex;
 use std::collections::HashMap;
 
@@ -393,15 +394,25 @@ impl LlvmPassDumpParser {
         output: &str,
         opt_pipeline_options: &OptPipelineBackendOptions,
     ) -> OptPipelineResults {
-        let ir = output
-            .lines()
-            .skip_while(|line| {
-                !self.ir_dump_header.is_match(line) && !self.machine_code_dump_header.is_match(line)
-            })
-            .join("\n");
+        let offset = {
+            let mut pos = 0;
+            let newlines = memchr_iter(b'\n', output.as_bytes());
+
+            for newline_pos in newlines {
+                let line = &output[pos..newline_pos];
+                if self.ir_dump_header.is_match(line)
+                    || self.machine_code_dump_header.is_match(line)
+                {
+                    break;
+                }
+                pos = newline_pos + 1;
+            }
+            pos
+        };
+        let ir = &output[offset..];
         let ir = match opt_pipeline_options.apply_filters {
-            true => self.apply_ir_filters(&ir, opt_pipeline_options),
-            false => ir,
+            true => self.apply_ir_filters(ir, opt_pipeline_options),
+            false => ir.to_string(),
         };
         self.breakdown_output(ir, opt_pipeline_options)
     }
