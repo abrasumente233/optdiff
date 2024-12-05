@@ -8,6 +8,7 @@ use is_terminal::IsTerminal;
 use itertools::Itertools;
 use memchr::memmem;
 use optpipeline::Pass;
+use regex::Regex;
 use similar::TextDiff;
 use std::path::PathBuf;
 use std::{
@@ -39,7 +40,12 @@ mod optpipeline;
 
    <i># From a saved dump file:</i>
    clang input.c -O2 -mllvm -print-before-all -mllvm -print-after-all -c -o /dev/null &> dump.txt
-   optdiff dump.txt"))]
+   optdiff dump.txt
+
+   <i># To filter functions/passes (and optionally with regex `-E`):</i>
+   optdiff dump.txt -E -f 'foo.*'              # match functions starting with 'foo'
+   optdiff dump.txt -E -P 'Combine|Simplify'   # match passes containing 'Combine' or 'Simplify'
+   optdiff dump.txt -E -f '^main$' -P '.*Opt$' # match exactly 'main' function and passes ending in 'Opt'"))]
 struct Args {
     /// Path to LLVM pass dump file. If not provided, reads from stdin
     #[arg(value_name = "FILE")]
@@ -53,6 +59,14 @@ struct Args {
     #[arg(short = 'f', long = "function")]
     function: Option<String>,
 
+    /// Only show passes with names containing this string
+    #[arg(short = 'P', long = "pass")]
+    pass: Option<String>,
+
+    /// Enable extended regex patterns for -f and -P
+    #[arg(short = 'E', long = "extended-regex")]
+    extended_regex: bool,
+
     /// List available functions
     #[arg(short = 'l', long = "list")]
     list: bool,
@@ -60,10 +74,6 @@ struct Args {
     /// Which pager to use
     #[arg(short = 'p', long = "pager", env = "OPTDIFF_PAGER")]
     pager: Option<String>,
-
-    /// Only show passes with names containing this string
-    #[arg(short = 'P', long = "pass")]
-    pass: Option<String>,
 }
 
 fn read_input(args: &Args) -> Result<String, io::Error> {
@@ -77,15 +87,26 @@ fn read_input(args: &Args) -> Result<String, io::Error> {
     }
 }
 
+fn matches_pattern(text: &str, pattern: &str, use_regex: bool) -> Result<bool> {
+    if use_regex {
+        let regex =
+            Regex::new(pattern).wrap_err_with(|| format!("Invalid regex pattern: {}", pattern))?;
+        Ok(regex.is_match(text))
+    } else {
+        Ok(text.to_lowercase().contains(&pattern.to_lowercase()))
+    }
+}
+
 fn print_func(
     func_name: &str,
     pipeline: &[Pass],
     skip_unchanged: bool,
     pass_filter: Option<&str>,
+    use_regex: bool,
 ) -> Result<()> {
     for (i, pass) in pipeline.iter().enumerate() {
         if let Some(filter) = pass_filter {
-            if !pass.name.to_lowercase().contains(&filter.to_lowercase()) {
+            if !matches_pattern(&pass.name, filter, use_regex)? {
                 continue;
             }
         }
@@ -189,21 +210,43 @@ fn main() -> Result<()> {
     let result = optpipeline::process(&dump, true);
 
     if let Some(expected) = args.function {
-        let (func_name, pipeline) = result
-            .iter()
-            .find(|(func_name, _)| *func_name == &expected)
-            .ok_or_else(|| eyre!("Function '{}' was not found in the input, use option `--list/-l` to find out all available functions", expected))?;
+        let (func_name, pipeline) = if args.extended_regex {
+            let regex = Regex::new(&expected)
+                .wrap_err_with(|| format!("Invalid regex pattern: {}", expected))?;
+            result
+                .iter()
+                .find(|(func_name, _)| regex.is_match(func_name))
+                .ok_or_else(|| {
+                    eyre!(
+                        "No function matching regex '{}' was found in the input, use option `--list/-l` to find out all available functions",
+                        expected
+                    )
+                })?
+        } else {
+            result
+                .iter()
+                .find(|(func_name, _)| *func_name == &expected)
+                .ok_or_else(|| eyre!("Function '{}' was not found in the input, use option `--list/-l` to find out all available functions", expected))?
+        };
+
         enter_pager(args.pager.as_deref());
         print_func(
             func_name,
             pipeline,
             args.skip_unchanged,
             args.pass.as_deref(),
+            args.extended_regex,
         )?;
     } else {
         enter_pager(args.pager.as_deref());
         for (func, pipeline) in result.iter().sorted_by_key(|(func, _)| *func) {
-            print_func(func, pipeline, args.skip_unchanged, args.pass.as_deref())?;
+            print_func(
+                func,
+                pipeline,
+                args.skip_unchanged,
+                args.pass.as_deref(),
+                args.extended_regex,
+            )?;
         }
     }
 
