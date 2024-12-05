@@ -60,6 +60,10 @@ struct Args {
     /// Which pager to use
     #[arg(short = 'p', long = "pager", env = "OPTDIFF_PAGER")]
     pager: Option<String>,
+
+    /// Only show passes with names containing this string
+    #[arg(short = 'P', long = "pass")]
+    pass: Option<String>,
 }
 
 fn read_input(args: &Args) -> Result<String, io::Error> {
@@ -73,9 +77,19 @@ fn read_input(args: &Args) -> Result<String, io::Error> {
     }
 }
 
-fn print_func(func_name: &str, pipeline: &[Pass], skip_unchanged: bool) -> Result<()> {
-    cli_writeln!(io::stdout(), "Function: {}\n", func_name)?;
+fn print_func(
+    func_name: &str,
+    pipeline: &[Pass],
+    skip_unchanged: bool,
+    pass_filter: Option<&str>,
+) -> Result<()> {
     for (i, pass) in pipeline.iter().enumerate() {
+        if let Some(filter) = pass_filter {
+            if !pass.name.to_lowercase().contains(&filter.to_lowercase()) {
+                continue;
+            }
+        }
+
         if skip_unchanged && pass.before == pass.after {
             continue;
         }
@@ -84,7 +98,7 @@ fn print_func(func_name: &str, pipeline: &[Pass], skip_unchanged: bool) -> Resul
         let after = pass.after.clone() + "\n";
         let diff = TextDiff::from_lines(&before, &after);
 
-        let title = format!("{}. {}", i + 1, &pass.name);
+        let title = format!("({}·{}) {}", i + 1, func_name, &pass.name);
         let mut stdout = io::stdout();
         cli_writeln!(stdout, "diff --git a/{} b/{}", title, title)?;
         cli_writeln!(stdout, "--- a/{}", title)?;
@@ -180,11 +194,16 @@ fn main() -> Result<()> {
             .find(|(func_name, _)| *func_name == &expected)
             .ok_or_else(|| eyre!("Function '{}' was not found in the input, use option `--list/-l` to find out all available functions", expected))?;
         enter_pager(args.pager.as_deref());
-        print_func(func_name, pipeline, args.skip_unchanged)?;
+        print_func(
+            func_name,
+            pipeline,
+            args.skip_unchanged,
+            args.pass.as_deref(),
+        )?;
     } else {
         enter_pager(args.pager.as_deref());
         for (func, pipeline) in result.iter().sorted_by_key(|(func, _)| *func) {
-            print_func(func, pipeline, args.skip_unchanged)?;
+            print_func(func, pipeline, args.skip_unchanged, args.pass.as_deref())?;
         }
     }
 
