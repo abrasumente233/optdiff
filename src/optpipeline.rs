@@ -320,8 +320,9 @@ impl LlvmPassDumpParser {
                 }
                 pass.machine = current_dump.machine;
 
+                // handle isel diff, and NOT handle machine-outliner (before != after)
                 if let Some(previous_pass) = passes.last() {
-                    if previous_pass.machine != pass.machine {
+                    if !previous_pass.machine && pass.machine && pass.before != pass.after {
                         pass.before = previous_pass.after.clone();
                     }
                 }
