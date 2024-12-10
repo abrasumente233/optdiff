@@ -94,7 +94,7 @@ where
         }
         demangle_line(out, &buf[..], options)?;
         if nl {
-            write!(out, "\n")?;
+            writeln!(out)?;
         }
         buf.clear();
     }

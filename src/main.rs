@@ -100,7 +100,7 @@ fn matches_pattern(text: &str, pattern: &str, use_regex: bool) -> Result<bool> {
     if use_regex {
         let regex =
             Regex::new(pattern).wrap_err_with(|| format!("Invalid regex pattern: {}", pattern))?;
-        Ok(regex.is_match(&text))
+        Ok(regex.is_match(text))
     } else {
         Ok(text.to_lowercase().contains(&pattern.to_lowercase()))
     }
