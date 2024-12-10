@@ -244,7 +244,7 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    let (prefix, result) = optpipeline::process(&dump, true);
+    let (prefix, result) = optpipeline::process(&dump, true).wrap_err("Parsing error")?;
     cli_write!(io::stderr(), "{}", prefix)?;
 
     if let Some(expected) = args.function {

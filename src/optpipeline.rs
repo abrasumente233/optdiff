@@ -2,6 +2,7 @@ use itertools::Itertools;
 use memchr::memchr_iter;
 use regex::Regex;
 use std::collections::HashMap;
+use thiserror::Error;
 
 #[derive(Debug)]
 pub struct Pass {
@@ -50,6 +51,21 @@ pub struct LlvmPassDumpParser {
     machine_function_end: Regex,
 }
 
+#[derive(Debug, Error)]
+pub enum PassDumpError {
+    #[error(
+        "Consecutive pass headers in dump file do not match:\n\
+        First:  '{before_header}'\n\
+        Second: '{after_header}'\n\n\
+        'optdiff' compares each pass dump with its immediate next dump in the file.\n\
+        This error typically occurs when multiple compiler instances write to the same dump file.\n\
+        Please run a single compiler instance at a time."
+    )]
+    PassMismatch {
+        before_header: String,
+        after_header: String,
+    },
+}
 impl LlvmPassDumpParser {
     fn new() -> Self {
         LlvmPassDumpParser {
@@ -270,7 +286,7 @@ impl LlvmPassDumpParser {
     fn match_pass_dumps(
         &self,
         pass_dumps_by_function: HashMap<String, Vec<PassDump>>,
-    ) -> OptPipelineResults {
+    ) -> Result<OptPipelineResults, PassDumpError> {
         let mut final_output = HashMap::new();
 
         for (function_name, pass_dumps) in pass_dumps_by_function {
@@ -299,7 +315,7 @@ impl LlvmPassDumpParser {
                 } else if current_dump.header.starts_with("IR Dump Before ") {
                     if let Some(next_dump) = next_dump {
                         if next_dump.header.starts_with("IR Dump After ") {
-                            assert!(passes_match(&current_dump.header, &next_dump.header));
+                            passes_match(&current_dump.header, &next_dump.header)?;
                             assert!(current_dump.machine == next_dump.machine);
                             pass.name = current_dump.header["IR Dump Before ".len()..].to_string();
                             pass.before = current_dump.lines.clone();
@@ -333,26 +349,26 @@ impl LlvmPassDumpParser {
 
             final_output.insert(function_name, passes);
         }
-        final_output
+        Ok(final_output)
     }
 
     fn breakdown_output(
         &self,
         ir: &str,
         opt_pipeline_options: &OptPipelineBackendOptions,
-    ) -> OptPipelineResults {
+    ) -> Result<OptPipelineResults, PassDumpError> {
         let raw_passes = self.breakdown_output_into_pass_dumps(ir);
 
         if opt_pipeline_options.full_module {
             let pass_dumps_by_function = self.associate_full_dumps_with_functions(raw_passes);
-            self.match_pass_dumps(pass_dumps_by_function)
+            Ok(self.match_pass_dumps(pass_dumps_by_function)?)
         } else {
             let pass_dumps = raw_passes
                 .into_iter()
                 .map(|dump| self.breakdown_pass_dumps_into_functions(dump))
                 .collect();
             let pass_dumps_by_function = self.breakdown_into_pass_dumps_by_function(pass_dumps);
-            self.match_pass_dumps(pass_dumps_by_function)
+            Ok(self.match_pass_dumps(pass_dumps_by_function)?)
         }
     }
 
@@ -413,7 +429,7 @@ impl LlvmPassDumpParser {
         &self,
         output: &'a str,
         opt_pipeline_options: &OptPipelineBackendOptions,
-    ) -> (&'a str, OptPipelineResults) {
+    ) -> Result<(&'a str, OptPipelineResults), PassDumpError> {
         let offset = {
             let mut pos = 0;
             let newlines = memchr_iter(b'\n', output.as_bytes());
@@ -434,14 +450,14 @@ impl LlvmPassDumpParser {
             true => &self.apply_ir_filters(ir, opt_pipeline_options),
             false => ir,
         };
-        (
+        Ok((
             &output[..offset],
-            self.breakdown_output(ir, opt_pipeline_options),
-        )
+            self.breakdown_output(ir, opt_pipeline_options)?,
+        ))
     }
 }
 
-fn passes_match(before: &str, after: &str) -> bool {
+fn passes_match(before: &str, after: &str) -> Result<(), PassDumpError> {
     assert!(before.starts_with("IR Dump Before "));
     assert!(after.starts_with("IR Dump After "));
     let before = &before["IR Dump Before ".len()..];
@@ -449,10 +465,21 @@ fn passes_match(before: &str, after: &str) -> bool {
     if after.ends_with(" (invalidated)") {
         after = &after[..after.len() - " (invalidated)".len()];
     }
-    before == after
+
+    if before == after {
+        Ok(())
+    } else {
+        Err(PassDumpError::PassMismatch {
+            before_header: before.to_string(),
+            after_header: after.to_string(),
+        })
+    }
 }
 
-pub fn process(dump: &str, apply_filters: bool) -> (&str, OptPipelineResults) {
+pub fn process(
+    dump: &str,
+    apply_filters: bool,
+) -> Result<(&str, OptPipelineResults), PassDumpError> {
     let llvm_pass_dump_parser = LlvmPassDumpParser::new();
     llvm_pass_dump_parser.process(
         dump,
