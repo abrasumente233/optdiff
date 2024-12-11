@@ -10,6 +10,7 @@ repository = "https://github.com/abrasumente233/optdiff"
 clap = { version = "4.5.21", features = ["derive", "env"] }
 color-eyre = "0.6.3"
 color-print = "0.3.7"
+cpp_demangle = "0.4.4"
 is-terminal = "0.4.13"
 itertools = "0.12.1"
 memchr = "2.7.4"

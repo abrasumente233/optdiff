@@ -20,6 +20,7 @@ use std::{
 use pager::Pager;
 
 mod cli_write;
+mod demangle;
 mod optpipeline;
 
 #[derive(Parser)]
@@ -71,6 +72,10 @@ struct Args {
     #[arg(short = 'l', long = "list")]
     list: bool,
 
+    /// Demangle C++ symbols
+    #[arg(short = 'd', long = "demangle")]
+    demangle: bool,
+
     /// Which pager to use
     #[arg(short = 'p', long = "pager", env = "OPTDIFF_PAGER")]
     pager: Option<String>,
@@ -91,9 +96,23 @@ fn matches_pattern(text: &str, pattern: &str, use_regex: bool) -> Result<bool> {
     if use_regex {
         let regex =
             Regex::new(pattern).wrap_err_with(|| format!("Invalid regex pattern: {}", pattern))?;
-        Ok(regex.is_match(text))
+        Ok(regex.is_match(&text))
     } else {
         Ok(text.to_lowercase().contains(&pattern.to_lowercase()))
+    }
+}
+
+fn demangle_text(text: &str, should_demangle: bool) -> String {
+    if !should_demangle {
+        return text.to_string();
+    }
+
+    let mut output = Vec::new();
+    let options = demangle::DemangleBuilder::new().build();
+    if demangle::demangle_line(&mut output, text.as_bytes(), options).is_ok() {
+        String::from_utf8_lossy(&output).to_string()
+    } else {
+        text.to_string()
     }
 }
 
@@ -103,10 +122,13 @@ fn print_func(
     skip_unchanged: bool,
     pass_filter: Option<&str>,
     use_regex: bool,
+    should_demangle: bool,
 ) -> Result<()> {
     for (i, pass) in pipeline.iter().enumerate() {
+        let demangled_name = demangle_text(&pass.name, should_demangle);
+
         if let Some(filter) = pass_filter {
-            if !matches_pattern(&pass.name, filter, use_regex)? {
+            if !matches_pattern(&demangled_name, filter, use_regex)? {
                 continue;
             }
         }
@@ -115,9 +137,10 @@ fn print_func(
             continue;
         }
 
-        let before = pass.before.clone() + "\n";
-        let after = pass.after.clone() + "\n";
-        let diff = TextDiff::from_lines(&before, &after);
+        let demangled_before = demangle_text(&pass.before, should_demangle) + "\n";
+        let demangled_after = demangle_text(&pass.after, should_demangle) + "\n";
+
+        let diff = TextDiff::from_lines(&demangled_before, &demangled_after);
 
         let title = format!("({}·{}) {}", i + 1, func_name, &pass.name);
         let mut stdout = io::stdout();
@@ -159,7 +182,7 @@ fn enter_pager(pager: Option<&str>) {
 #[cfg(not(unix))]
 fn enter_pager(_pager: Option<&str>) {}
 
-fn list_functions(dump: &str) -> HashSet<&str> {
+fn list_functions(dump: &str, should_demangle: bool) -> HashSet<String> {
     let mut functions = HashSet::new();
     let haystack = dump.as_bytes();
     {
@@ -168,7 +191,12 @@ fn list_functions(dump: &str) -> HashSet<&str> {
             let start = start + memchr::memchr(b'@', &haystack[start..]).unwrap() + 1;
             let end = memchr::memchr(b'(', &haystack[start..]).unwrap();
             let name = &dump[start..start + end];
-            functions.insert(name);
+            let demangled = if should_demangle {
+                demangle_text(name, true)
+            } else {
+                name.to_string()
+            };
+            functions.insert(demangled);
         }
     }
     {
@@ -177,7 +205,12 @@ fn list_functions(dump: &str) -> HashSet<&str> {
             let start = start + b"# Machine code for function ".len();
             let end = memchr::memchr(b':', &haystack[start..]).unwrap();
             let name = &dump[start..start + end];
-            functions.insert(name);
+            let demangled = if should_demangle {
+                demangle_text(name, true)
+            } else {
+                name.to_string()
+            };
+            functions.insert(demangled);
         }
     }
     functions
@@ -201,7 +234,7 @@ fn main() -> Result<()> {
     }
 
     if args.list {
-        for func in list_functions(&dump).into_iter().sorted() {
+        for func in list_functions(&dump, args.demangle).into_iter().sorted() {
             cli_writeln!(io::stdout(), "{func}")?;
         }
         return Ok(());
@@ -215,7 +248,8 @@ fn main() -> Result<()> {
                 .wrap_err_with(|| format!("Invalid regex pattern: {}", expected))?;
             result
                 .iter()
-                .find(|(func_name, _)| regex.is_match(func_name))
+                .map(|(func_name, pipeline)| (demangle_text(func_name, args.demangle), pipeline))
+                .find(|(func_name,_)| regex.is_match(func_name))
                 .ok_or_else(|| {
                     eyre!(
                         "No function matching regex '{}' was found in the input, use option `--list/-l` to find out all available functions",
@@ -225,17 +259,19 @@ fn main() -> Result<()> {
         } else {
             result
                 .iter()
-                .find(|(func_name, _)| *func_name == &expected)
+                .map(|(func_name, pipeline)| (demangle_text(func_name, args.demangle), pipeline))
+                .find(|(func_name,_)| func_name == &expected)
                 .ok_or_else(|| eyre!("Function '{}' was not found in the input, use option `--list/-l` to find out all available functions", expected))?
         };
 
         enter_pager(args.pager.as_deref());
         print_func(
-            func_name,
+            &func_name,
             pipeline,
             args.skip_unchanged,
             args.pass.as_deref(),
             args.extended_regex,
+            args.demangle,
         )?;
     } else {
         enter_pager(args.pager.as_deref());
@@ -246,6 +282,7 @@ fn main() -> Result<()> {
                 args.skip_unchanged,
                 args.pass.as_deref(),
                 args.extended_regex,
+                args.demangle,
             )?;
         }
     }
