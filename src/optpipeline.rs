@@ -409,11 +409,11 @@ impl LlvmPassDumpParser {
         re.replace_all(ir, "").to_string()
     }
 
-    fn process(
+    fn process<'a>(
         &self,
-        output: &str,
+        output: &'a str,
         opt_pipeline_options: &OptPipelineBackendOptions,
-    ) -> OptPipelineResults {
+    ) -> (&'a str, OptPipelineResults) {
         let offset = {
             let mut pos = 0;
             let newlines = memchr_iter(b'\n', output.as_bytes());
@@ -434,7 +434,10 @@ impl LlvmPassDumpParser {
             true => &self.apply_ir_filters(ir, opt_pipeline_options),
             false => ir,
         };
-        self.breakdown_output(ir, opt_pipeline_options)
+        (
+            &output[..offset],
+            self.breakdown_output(ir, opt_pipeline_options),
+        )
     }
 }
 
@@ -449,7 +452,7 @@ fn passes_match(before: &str, after: &str) -> bool {
     before == after
 }
 
-pub fn process(dump: &str, apply_filters: bool) -> OptPipelineResults {
+pub fn process(dump: &str, apply_filters: bool) -> (&str, OptPipelineResults) {
     let llvm_pass_dump_parser = LlvmPassDumpParser::new();
     llvm_pass_dump_parser.process(
         dump,

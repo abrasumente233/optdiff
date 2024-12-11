@@ -79,6 +79,10 @@ struct Args {
     /// Which pager to use
     #[arg(short = 'p', long = "pager", env = "OPTDIFF_PAGER")]
     pager: Option<String>,
+
+    /// Pass through prefix
+    #[arg(long = "passthrough")]
+    passthrough: bool,
 }
 
 fn read_input(args: &Args) -> Result<String, io::Error> {
@@ -240,7 +244,8 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    let result = optpipeline::process(&dump, true);
+    let (prefix, result) = optpipeline::process(&dump, true);
+    cli_write!(io::stderr(), "{}", prefix)?;
 
     if let Some(expected) = args.function {
         let (func_name, pipeline) = if args.extended_regex {
