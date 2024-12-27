@@ -155,7 +155,9 @@ impl LlvmPassDumpParser {
 
         for line in dump.lines.lines() {
             let line = line.to_string();
-            let is_ir_fn = line.starts_with("define ");
+            let is_ir_fn = line.starts_with("define ")
+                || line.trim().starts_with("func.func ")
+                || line.trim().starts_with("tt.func");
             let is_machine_fn = line.starts_with("# Machine code for function ");
 
             if is_ir_fn {
