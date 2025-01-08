@@ -1,54 +1,65 @@
 {
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11";
-    devenv.url = "github:cachix/devenv";
-    devenv.inputs.nixpkgs.follows = "nixpkgs";
-    rust-overlay = {
-      url = "github:oxalica/rust-overlay";
-      inputs = {
-        nixpkgs.follows = "nixpkgs";
-      };
-    };
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    rust-overlay.url = "github:oxalica/rust-overlay";
+    rust-overlay.inputs.nixpkgs.follows = "nixpkgs";
+    crane.url = "github:ipetkov/crane";
   };
 
   outputs =
-    inputs@{ flake-parts, nixpkgs, ... }:
-    flake-parts.lib.mkFlake { inherit inputs; } {
-      imports = [
-        inputs.devenv.flakeModule
-      ];
-      systems = nixpkgs.lib.systems.flakeExposed;
-
-      perSystem =
-        {
-          lib,
-          pkgs,
-          system,
-          ...
-        }:
-        {
-          _module.args.pkgs = import inputs.nixpkgs {
-            inherit system;
-            overlays = [ (import inputs.rust-overlay) ];
-          };
-          devenv.shells.default =
+    {
+      self,
+      nixpkgs,
+      rust-overlay,
+      crane,
+    }:
+    let
+      forAllSystems =
+        function:
+        nixpkgs.lib.genAttrs
+          [
+            "x86_64-linux"
+            "aarch64-linux"
+            "x86_64-darwin"
+            "aarch64-darwin"
+          ]
+          (
+            system:
             let
-              isDarwin = pkgs.lib.strings.hasSuffix "-darwin" system;
-              rustToolchain = pkgs.rust-bin.stable.latest.default.override {
-                extensions = [
-                  "rust-src"
-                  "rust-analyzer"
-                ];
+              pkgs = import nixpkgs {
+                inherit system;
+                overlays = [ (import rust-overlay) ];
               };
             in
-            {
-              packages =
-                [ rustToolchain ]
-                ++ lib.optionals isDarwin [
-                  pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
-                  pkgs.libiconv
-                ];
-            };
+            function pkgs
+          );
+
+      makePackage =
+        pkgs:
+        let
+          rustToolchain = pkgs.rust-bin.stable.latest.default;
+          craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
+          optdiff = pkgs.callPackage ./package.nix {
+            inherit craneLib rustToolchain;
+            system = pkgs.system;
+          };
+        in
+        optdiff;
+    in
+    {
+      packages = forAllSystems (pkgs: {
+        default = makePackage pkgs;
+        optdiff = makePackage pkgs;
+      });
+
+      devShells = forAllSystems (pkgs: {
+        default = pkgs.mkShell {
+          inputsFrom = [ (makePackage pkgs) ];
         };
+      });
+
+      overlays.default = final: prev: {
+        optdiff = self.packages.${prev.system}.optdiff;
+      };
     };
 }
