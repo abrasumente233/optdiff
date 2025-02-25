@@ -70,7 +70,7 @@ impl LlvmPassDumpParser {
     fn new() -> Self {
         LlvmPassDumpParser {
             ir_dump_header: Regex::new(
-                r"^;?\s?\*{3} (.+) \*{3}(?:\s+\((?:function: |loop: )(%?[\w$.]+)\))?(?:;.+)?$",
+                r"^;?\s?(?:\*{3} (.+) \*{3}|// -----// (.+) //----- //)(?:\s+\((?:function: |loop: )(%?[\w$.]+)\))?(?:;.+)?$",
             )
             .unwrap(),
             machine_code_dump_header: Regex::new(r"^# \*{3} (.+) \*{3}:$").unwrap(),
@@ -91,6 +91,7 @@ impl LlvmPassDumpParser {
         for line in ir.lines() {
             let is_header = line.starts_with("; *** ")
                 || line.starts_with("*** ")
+                || line.starts_with("// -----// ")
                 || line.starts_with("# *** ");
 
             if is_header {
@@ -99,11 +100,18 @@ impl LlvmPassDumpParser {
                 }
                 let header_prefix = if line.starts_with(';') || line.starts_with("#") {
                     "; *** "
+                } else if line.starts_with("//") {
+                    "// -----// "
                 } else {
                     "*** "
                 };
+                let header_suffix = if line.starts_with("//") {
+                    " //----- //"
+                } else {
+                    " ***"
+                };
                 let header = &line[header_prefix.len()..];
-                let header = &header[..header.find(" ***").unwrap()];
+                let header = &header[..header.find(header_suffix).unwrap()];
 
                 let affected_function =
                     if let Some(idx) = line.find("(function: ").or(line.find("(loop: ")) {
