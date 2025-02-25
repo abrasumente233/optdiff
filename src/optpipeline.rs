@@ -357,6 +357,21 @@ impl LlvmPassDumpParser {
                 passes.push(pass);
             }
 
+            for i in 0..passes.len() {
+                // If 'before' is empty and there’s a previous pass, use its 'after'
+                if passes[i].before.is_empty() && i > 0 {
+                    passes[i].before = passes[i - 1].after.clone();
+                }
+
+                // If 'after' is empty and there’s a next pass, use its 'before'
+                if passes[i].after.is_empty() && i < passes.len() - 1 {
+                    passes[i].after = passes[i + 1].before.clone();
+                }
+
+                // Recalculate ir_changed after filling
+                passes[i].ir_changed = passes[i].before != passes[i].after;
+            }
+
             final_output.insert(function_name, passes);
         }
         Ok(final_output)
